@@ -96,13 +96,36 @@
     .todo-item {
       display: flex;
       align-items: center;
-      gap: 12px;
-      padding: 14px 16px;
+      gap: 8px;
+      padding: 12px 14px;
       background: #fff;
       border-radius: 8px;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
       box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-      transition: opacity 0.2s;
+      transition: opacity 0.2s, transform 0.2s, box-shadow 0.2s;
+      cursor: grab;
+    }
+
+    .todo-item.dragging {
+      opacity: 0.4;
+    }
+
+    .todo-item.drag-over {
+      border-top: 3px solid #4a90d9;
+      margin-top: -3px;
+    }
+
+    .todo-item .drag-handle {
+      color: #ccc;
+      font-size: 14px;
+      cursor: grab;
+      user-select: none;
+      line-height: 1;
+      margin-right: -4px;
+    }
+
+    .todo-item .drag-handle:active {
+      cursor: grabbing;
     }
 
     .todo-item input[type="checkbox"] {
@@ -112,13 +135,13 @@
       accent-color: #4a90d9;
     }
 
-    .todo-item span {
+    .todo-item .todo-text {
       flex: 1;
       font-size: 16px;
       transition: all 0.2s;
     }
 
-    .todo-item.done span {
+    .todo-item.done .todo-text {
       text-decoration: line-through;
       color: #aaa;
     }
@@ -226,17 +249,56 @@
       if (filtered.length === 0) {
         list.innerHTML = '<li class="empty">タスクがありません</li>';
       } else {
-        list.innerHTML = filtered.map(t => `
-          <li class="todo-item ${t.done ? 'done' : ''}">
-            <input type="checkbox" ${t.done ? 'checked' : ''} onchange="toggleTodo(${t.id})">
-            <span>${escapeHtml(t.text)}</span>
-            <button class="delete-btn" onclick="deleteTodo(${t.id})">&times;</button>
-          </li>
-        `).join('');
+        list.innerHTML = filtered.map(t =>
+          `<li class="todo-item ${t.done ? 'done' : ''}" draggable="true" data-id="${t.id}"><span class="drag-handle">&#x2630;</span><input type="checkbox" ${t.done ? 'checked' : ''} onchange="toggleTodo(${t.id})"><span class="todo-text">${escapeHtml(t.text)}</span><button class="delete-btn" onclick="deleteTodo(${t.id})">&times;</button></li>`
+        ).join('');
+        initDragAndDrop();
       }
 
       const active = todos.filter(t => !t.done).length;
       footer.textContent = todos.length > 0 ? `${active} 件の未完了タスク / 全 ${todos.length} 件` : '';
+    }
+
+    let draggedId = null;
+
+    function initDragAndDrop() {
+      const items = list.querySelectorAll('.todo-item[draggable]');
+      items.forEach(item => {
+        item.addEventListener('dragstart', (e) => {
+          draggedId = Number(item.dataset.id);
+          item.classList.add('dragging');
+          e.dataTransfer.effectAllowed = 'move';
+        });
+        item.addEventListener('dragend', () => {
+          item.classList.remove('dragging');
+          list.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+          draggedId = null;
+        });
+        item.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          if (Number(item.dataset.id) !== draggedId) {
+            list.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+            item.classList.add('drag-over');
+          }
+        });
+        item.addEventListener('dragleave', () => {
+          item.classList.remove('drag-over');
+        });
+        item.addEventListener('drop', (e) => {
+          e.preventDefault();
+          item.classList.remove('drag-over');
+          const targetId = Number(item.dataset.id);
+          if (draggedId === targetId) return;
+          const fromIdx = todos.findIndex(t => t.id === draggedId);
+          const toIdx = todos.findIndex(t => t.id === targetId);
+          if (fromIdx === -1 || toIdx === -1) return;
+          const [moved] = todos.splice(fromIdx, 1);
+          todos.splice(toIdx, 0, moved);
+          save();
+          render();
+        });
+      });
     }
 
     function escapeHtml(str) {
